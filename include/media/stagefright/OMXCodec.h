@@ -74,6 +74,7 @@ struct OMXCodec : public MediaSource,
         kEnableThumbnailMode = 512,
         kUseMinBufferCount = 32768,
 #endif
+
     };
     static sp<MediaSource> Create(
             const sp<IOMX> &omx,

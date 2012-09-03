@@ -258,6 +258,7 @@ static const CodecInfo kDecoderInfo[] = {
     { MEDIA_MIMETYPE_VIDEO_MPEG4, "OMX.Nvidia.mp4.decode" },
     { MEDIA_MIMETYPE_VIDEO_MPEG4, "OMX.qcom.7x30.video.decoder.mpeg4" },
     { MEDIA_MIMETYPE_VIDEO_MPEG4, "OMX.qcom.video.decoder.mpeg4" },
+    { MEDIA_MIMETYPE_VIDEO_MPEG4, "OMX.TI.720P.Decoder" },    
     { MEDIA_MIMETYPE_VIDEO_MPEG4, "OMX.TI.Video.Decoder" },
     { MEDIA_MIMETYPE_VIDEO_MPEG4, "OMX.SEC.MPEG4.Decoder" },
     { MEDIA_MIMETYPE_VIDEO_MPEG4, "OMX.google.mpeg4.decoder" },
@@ -319,6 +320,7 @@ static const CodecInfo kEncoderInfo[] = {
     { MEDIA_MIMETYPE_AUDIO_QCELP,  "OMX.qcom.audio.encoder.qcelp13" },
 #endif
     { MEDIA_MIMETYPE_VIDEO_MPEG4, "OMX.qcom.video.encoder.mpeg4" },
+    { MEDIA_MIMETYPE_VIDEO_MPEG4, "OMX.TI.720P.Encoder" },    
     { MEDIA_MIMETYPE_VIDEO_MPEG4, "OMX.TI.Video.encoder" },
     { MEDIA_MIMETYPE_VIDEO_MPEG4, "OMX.Nvidia.mp4.encoder" },
     { MEDIA_MIMETYPE_VIDEO_MPEG4, "OMX.SEC.MPEG4.Encoder" },
@@ -333,6 +335,7 @@ static const CodecInfo kEncoderInfo[] = {
     { MEDIA_MIMETYPE_VIDEO_AVC, "OMX.TI.DUCATI1.VIDEO.H264E" },
     { MEDIA_MIMETYPE_VIDEO_AVC, "OMX.qcom.7x30.video.encoder.avc" },
     { MEDIA_MIMETYPE_VIDEO_AVC, "OMX.qcom.video.encoder.avc" },
+    { MEDIA_MIMETYPE_VIDEO_AVC, "OMX.TI.720P.Encoder" },    
     { MEDIA_MIMETYPE_VIDEO_AVC, "OMX.TI.Video.encoder" },
     { MEDIA_MIMETYPE_VIDEO_AVC, "OMX.Nvidia.h264.encoder" },
     { MEDIA_MIMETYPE_VIDEO_AVC, "OMX.SEC.AVC.Encoder" },
@@ -899,6 +902,20 @@ status_t OMXCodec::configureCodec(const sp<MetaData> &meta) {
                 // and wreak havoc instead...
 
                 LOGE("Profile and/or level exceed the decoder's capabilities.");
+                return ERROR_UNSUPPORTED;
+            }
+            int32_t width, height;
+            bool success = meta->findInt32(kKeyWidth, &width);
+            success = success && meta->findInt32(kKeyHeight, &height);
+            CHECK(success);
+            if (!strcmp(mComponentName, "OMX.TI.720P.Decoder")
+                && (profile == kAVCProfileBaseline && level <= 31)
+                && (width*height <= MAX_RESOLUTION)
+                && (width <= MAX_RESOLUTION_WIDTH && height <= MAX_RESOLUTION_HEIGHT ))
+            {
+                // Though this decoder can handle this profile/level,
+                // we prefer to use "OMX.TI.Video.Decoder" for
+                // Baseline Profile with level <=31 and sub 720p
                 return ERROR_UNSUPPORTED;
             }
             if(!strcmp(mComponentName, "OMX.google.h264.decoder")
@@ -5960,8 +5977,29 @@ status_t QueryCodecs(
                 break;
             }
 
-            CodecProfileLevel profileLevel;
-            profileLevel.mProfile = param.eProfile;
+      	   CodecProfileLevel profileLevel;
+#ifdef OMAP_COMPAT
+            if (!strcmp(componentName, "OMX.TI.Video.Decoder")) {
+ 	        //OMX defined profile levels for Baselevel (OMX_VIDEO_AVCProfileBaseline = 0x1 don't match Anddroid's definition for base profile
+                //kAVCProfileBaseline = 0x42. TI 36xx decoder support only base profile and level 31
+		profileLevel.mProfile = kAVCProfileBaseline;
+	    }	
+	    
+            if(!strcmp(componentName, "OMX.TI.720P.Decoder")) {
+		switch(param.eProfile)
+		{
+		    case OMX_VIDEO_AVCProfileBaseline:
+			profileLevel.mProfile = kAVCProfileBaseline;
+			break;
+
+		    default:
+			LOGE("QueryCodecs:unsupported profile:%d",param.eProfile);
+			break;
+		}
+	    }
+#else
+	    profileLevel.mProfile = param.eProfile;
+#endif
             profileLevel.mLevel = param.eLevel;
 
             caps->mProfileLevels.push(profileLevel);
@@ -5969,9 +6007,17 @@ status_t QueryCodecs(
 
         // Color format query
         OMX_VIDEO_PARAM_PORTFORMATTYPE portFormat;
+#ifdef OMAP_COMPAT
+	int16_t nIndex = 0;
+#endif
         InitOMXParams(&portFormat);
         portFormat.nPortIndex = queryDecoders ? 1 : 0;
+#ifdef OMAP_COMPAT
+        for (nIndex = 0;; ++nIndex)  {
+	        portFormat.nIndex = nIndex;
+#else
         for (portFormat.nIndex = 0;; ++portFormat.nIndex)  {
+#endif
             err = omx->getParameter(
                     node, OMX_IndexParamVideoPortFormat,
                     &portFormat, sizeof(portFormat));

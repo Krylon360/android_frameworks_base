@@ -2030,9 +2030,9 @@ status_t MPEG4Source::read(
     Mutex::Autolock autoLock(mLock);
 
     CHECK(mStarted);
-
+#ifdef OMAP_COMPAT
     *out = NULL;
-
+#endif
     int64_t targetSampleTimeUs = -1;
 
     int64_t seekTimeUs;
